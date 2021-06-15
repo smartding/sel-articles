@@ -8,11 +8,11 @@ SuperEdge 在 2021-05-20 发布了 v0.3.0 版本，其中有一个重要功能�
 >
 > 面对更为极端的情况，集群中所有节点同云端断联，节点也依然能保证服务后端的可用，极大增强了边缘集群的自治能力。
 
-这个功能一定程度上解决了边缘计算场景下，云边网络不稳定或者断网的情况下，边缘端通过自治感知Service的Endpoint变化，是边缘端流量能够正确地流向健康的Endpoint。这个功能的实现是通过edge-health和application-grid-wrapper两个组件，本文也将通过源码分析这两个组件来了解该功能的具体实现。
+这个功能一定程度上解决了边缘计算场景下，云边网络不稳定或者断网的情况下，边缘端通过自治感知Service的Endpoint变化，使边缘端流量能够正确地流向健康的endpoint。这个功能的实现通过edge-health和application-grid-wrapper两个组件实现，本文也将通过源码分析这两个组件来了解该功能的具体实现。
 
 # edge-health
 
-edge-health 是作为一个daemon组件运行在边缘端的没一个节点上，通过这一个节点SuperEdge可以分布式的去判断节点的健康状态儿不仅仅由云端来判断。
+edge-health是作为一个daemonset运行在边缘端的每一个节点上，通过它SuperEdge可以分布式的去判断节点的健康状态儿不仅仅由云端来判断。TODO 这里应该用2,3句话总结edge-health的大致工作原理和作用
 
 首先先看看edge-health的相关数据结构：
 
@@ -47,7 +47,7 @@ type CommunicateData struct {
 
 含义如下：
 
-* NodeListData：为了实现边缘分区域检查检测机制而维护的边缘节点cache，包含改区域内所有节点列表NodeList
+* NodeListData：为了实现边缘分区域检查检测机制而维护的边缘节点cache，包含该区域内所有节点列表NodeList
 
 * CheckInfoData：存放健康检查的信息数据，为一个二级map，第一级key为被检查节点的ip，第二级key是检测的插件的名称，value是检测分数
 
@@ -78,13 +78,16 @@ GetNodeList 每隔 HealthCheckPeriod 秒 (health-check-period 选项)执行一�
 ```go
 go wait.Until(check.GetNodeList, time.Duration(check.GetHealthCheckPeriod())*time.Second, ctx.Done())
 ```
+TODO 所有代码中的词，都应该用backtick框起来
 
 * 如果edge-system namespace下不存在edge-health-zone-config这个configmap，则没有开启多地域探测，因此会获取全部边缘节点并刷新node cache
 * 否则，如果 edge-health-zone-config 的 configmap 数据部分 TaintZoneAdmission 为 false，则没有开启多地域探测，因此会获取所有边缘节点列表并刷新 node cache
 * 如果 TaintZoneAdmission 为 true，且 node 有"superedgehealth/topology-zone"标签(标示区域)，则获取"superedgehealth/topology-zone" label value 相同的节点列表并刷新 node cache
-* 如果 node 没有"superedgehealth/topology-zone" label，则只会将边缘节点本身添加到分布式健康检查节点列表中并刷新 node cache(only itself)
+* 如果 node 没有"superedgehealth/topology-zone" label，则只会将边缘节点本身添加到分布式健康检查节点列表中并刷新 node cache(only itself) TODO 这里应说明这意味着什么
 
+TODO 下面的代码如果没有特别说明，不用贴出来
 ```go
+// TODO 这里应加上从repo名称开始的文件路径
 func (c CheckEdge) GetNodeList() {
    var hostzone string
    var host *v1.Node
@@ -438,6 +441,7 @@ func (c CommunicateEdge) Client() {
 
 在接受到其它节点的健康检查结果后，vote 模块会每隔VotePeriod秒对结果进行统计得出最终判决，并向 apiserver 报告：
 
+TODO 向apiserver报告之后，这些数据由谁负责后续处理？这里需要简单说明
 ```go
 vote := vote.NewVoteEdge(d.VoteTimeOut, d.VotePeriod)
 go wait.Until(vote.Vote, time.Duration(vote.GetVotePeriod())*time.Second, ctx.Done())
@@ -536,7 +540,7 @@ func (vote VoteEdge) Vote() {
   * 如果yes的个数大于等于`num := (float64(data.CheckInfoResult.GetLenCheckInfo()) + 1) / 2`，则说明该节点为健康节点，删除该节点的`nodeunhealth` annotation，并删除该节点上的`NoExecute`的taint
   * 如果no的个数大于等于`num := (float64(data.CheckInfoResult.GetLenCheckInfo()) + 1) / 2`，则说明该节点为不健康节点，给该节点添加的`nodeunhealth` annotation
 
-
+TODO 如果因为边缘节点之间断网，没有受到其他节点的`CommunicateData`还能不能举行投票？
 
 到这儿edge-health模块就分析完了，下面我们分析application-grid-wrapper组件
 
